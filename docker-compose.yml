@@ -1,0 +1,75 @@
+version: '3.3'
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    ports:
+      - 5432:5432
+    volumes: 
+      - db:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/create_tables.sql
+    networks:
+      - net
+
+  cache:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - '6380:6379'
+    command: redis-server --save 20 1 --loglevel warning --requirepass V1BHi73KqGRGvHiRkvhxtprUA0F1Hqsi
+    volumes: 
+      - cache:/data
+    networks:
+      - net
+
+  migrations:
+    build: migrations
+    command: -connectRetries=20 migrate
+    environment:
+      FLYWAY_USER: 'postgres'
+      FLYWAY_MIXED: 'true'
+      FLYWAY_PASSWORD: 'postgres'
+      FLYWAY_URL: 'jdbc:postgresql://db:5432/postgres'
+    networks:
+      - net
+
+  api:
+    build: .
+    restart: always
+    ports:
+      - "18000:8000"
+    depends_on:
+      - db
+      - cache
+      - migrations
+    volumes:
+      - ./:/src
+    links:
+      - db
+      - cache
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: postgres
+      REDIS_HOST: cache
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: V1BHi73KqGRGvHiRkvhxtprUA0F1Hqsi
+    networks:
+      - net
+
+volumes:
+  db:
+    driver: local
+  cache:
+    driver: local
+
+networks:
+  net:
+    driver: bridge
